@@ -1,0 +1,22 @@
+name: terminal-scheduler
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: scheduler-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scheduler}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scheduler_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-terminal_scheduler}
+    ports:
+      - "5434:5432"
+    volumes:
+      - scheduler_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scheduler} -d ${POSTGRES_DB:-terminal_scheduler}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  scheduler_pgdata:
