@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.routers import bands, workers, schedules, auth
+from app.routers import bands, workers, schedules, auth, imports
 
 app = FastAPI(
     title="Terminal Scheduler API",
@@ -24,6 +24,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(bands.router, prefix="/api/bands", tags=["bands"])
 app.include_router(workers.router, prefix="/api/workers", tags=["workers"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
+app.include_router(imports.router, prefix="/api/imports", tags=["imports"])
 
 
 @app.on_event("startup")

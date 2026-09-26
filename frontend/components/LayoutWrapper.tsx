@@ -11,7 +11,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   if (isPublic) return <>{children}</>
 
   return (
-    <div className="min-h-screen" style={{ background: '#f5f4f0' }}>
+    <div className="min-h-screen" style={{ background: 'var(--surface-0)' }}>
       <TopHeader />
       <main
         className="px-4 pb-32"

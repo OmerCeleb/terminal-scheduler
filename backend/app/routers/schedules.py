@@ -1,141 +1,113 @@
-from datetime import date, timedelta
+import datetime
+from io import BytesIO
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
-from io import BytesIO
+from sqlalchemy import select
 
 from app.core.database import get_db
-from app.models.models import Schedule, ScheduleAssignment, Band, BandDailyLoad, Worker, WorkerDailyLoad
-from app.schemas.schemas import ScheduleGenerateRequest, ScheduleOut, AssignmentOut
-from app.services.scheduler import run_assignment, BandInput, WorkerInput
-from app.services.pdf import generate_schedule_pdf
+from app.models.models import Schedule, ScheduleAssignment, Band, BandDailyLoad, Worker
+from app.schemas.schemas import ScheduleGenerateRequest, ScheduleOut, AssignmentOut, WorkerRef, BandRef
+from app.services.scheduler import run_assignment, BandInput
+from app.services.pdf import generate_band_sheet, generate_shift_report
+from app.routers.workers import load_workers_with_window
 
 router = APIRouter()
 
 
-async def _build_schedule_out(schedule: Schedule, db: AsyncSession) -> ScheduleOut:
-    result = await db.execute(
-        select(ScheduleAssignment).where(ScheduleAssignment.schedule_id == schedule.id)
-    )
-    assignments = result.scalars().all()
+async def _load_bands(db: AsyncSession, date: datetime.date) -> list[BandInput]:
+    rows = (await db.execute(
+        select(Band, BandDailyLoad)
+        .join(BandDailyLoad, BandDailyLoad.band_id == Band.id)
+        .where(BandDailyLoad.date == date)
+    )).all()
+    return [BandInput(id=b.id, name=b.name, packages=l.packages) for b, l in rows]
 
-    assignment_outs = []
-    for a in assignments:
-        band = await db.get(Band, a.band_id)
-        worker = await db.get(Worker, a.worker_id)
 
-        band_load_result = await db.execute(
-            select(BandDailyLoad).where(
-                and_(BandDailyLoad.band_id == a.band_id, BandDailyLoad.date == schedule.date)
-            )
-        )
-        band_load = band_load_result.scalar_one_or_none()
-
-        assignment_outs.append(AssignmentOut(
-            band_id=a.band_id,
-            band_name=band.name if band else "?",
-            band_packages=band_load.packages if band_load else 0,
-            worker_id=a.worker_id,
-            worker_name=worker.name if worker else "?",
-            fatigue_score=a.fatigue_score,
-        ))
+async def _build_out(schedule: Schedule, db: AsyncSession) -> ScheduleOut:
+    bands = await _load_bands(db, schedule.date)
+    _, _, worker_inputs = await load_workers_with_window(db, schedule.date)
+    result = run_assignment(bands, worker_inputs)
+    scores = result.fatigue_scores
 
     return ScheduleOut(
         id=schedule.id,
         date=schedule.date,
         generated_at=schedule.generated_at,
-        assignments=assignment_outs,
+        assignments=[
+            AssignmentOut(
+                band_id=a.band.id, band_name=a.band.name, band_packages=a.band.packages,
+                worker_id=a.worker.id, worker_name=a.worker.name, fatigue_score=a.fatigue_score,
+            )
+            for a in result.assignments
+        ],
+        stod=[WorkerRef(id=w.id, name=w.name, fatigue_score=scores[w.id]) for w in result.stod],
+        unassigned=[WorkerRef(id=w.id, name=w.name, fatigue_score=scores[w.id]) for w in result.unassigned],
+        empty_bands=[BandRef(id=b.id, name=b.name, packages=b.packages) for b in result.empty_bands],
     )
 
 
 @router.post("/generate", response_model=ScheduleOut, status_code=201)
 async def generate_schedule(payload: ScheduleGenerateRequest, db: AsyncSession = Depends(get_db)):
-    existing = await db.execute(select(Schedule).where(Schedule.date == payload.date))
-    existing_schedule = existing.scalar_one_or_none()
-    if existing_schedule:
-        for a in (await db.execute(
-            select(ScheduleAssignment).where(ScheduleAssignment.schedule_id == existing_schedule.id)
-        )).scalars().all():
-            await db.delete(a)
-        await db.delete(existing_schedule)
-        await db.commit()
+    bands = await _load_bands(db, payload.date)
+    if not bands:
+        raise HTTPException(status_code=400, detail="Inga bandvolymer registrerade för detta datum")
 
-    band_loads_result = await db.execute(
-        select(BandDailyLoad).where(BandDailyLoad.date == payload.date)
-    )
-    band_loads = band_loads_result.scalars().all()
-    if not band_loads:
-        raise HTTPException(status_code=400, detail="No band loads found for this date")
+    _, _, worker_inputs = await load_workers_with_window(db, payload.date)
+    if not any(w.role == "band" for w in worker_inputs):
+        raise HTTPException(status_code=400, detail="Inga aktiva medarbetare")
 
-    bands = []
-    for bl in band_loads:
-        band = await db.get(Band, bl.band_id)
-        if band:
-            bands.append(BandInput(id=band.id, name=band.name, packages=bl.packages))
+    result = run_assignment(bands, worker_inputs)
 
-    yesterday = payload.date - timedelta(days=1)
-    workers_result = await db.execute(select(Worker).where(Worker.is_active == True))
-    workers_db = workers_result.scalars().all()
-
-    workers = []
-    for w in workers_db:
-        load_result = await db.execute(
-            select(WorkerDailyLoad).where(
-                and_(WorkerDailyLoad.worker_id == w.id, WorkerDailyLoad.date == yesterday)
-            )
-        )
-        load = load_result.scalar_one_or_none()
-        workers.append(WorkerInput(
-            id=w.id,
-            name=w.name,
-            capacity=w.capacity,
-            yesterday_packages=load.packages_handled if load else 0,
-        ))
-
-    if not workers:
-        raise HTTPException(status_code=400, detail="No active workers found")
-
-    assignments = run_assignment(bands, workers)
+    existing = (await db.execute(select(Schedule).where(Schedule.date == payload.date))).scalar_one_or_none()
+    if existing:
+        await db.delete(existing)
+        await db.flush()
 
     schedule = Schedule(date=payload.date)
     db.add(schedule)
     await db.flush()
 
-    for a in assignments:
+    for a in result.assignments:
         db.add(ScheduleAssignment(
-            schedule_id=schedule.id,
-            band_id=a.band.id,
-            worker_id=a.worker.id,
-            fatigue_score=a.fatigue_score,
+            schedule_id=schedule.id, band_id=a.band.id, worker_id=a.worker.id, fatigue_score=a.fatigue_score,
         ))
 
     await db.commit()
     await db.refresh(schedule)
-    return await _build_schedule_out(schedule, db)
+    return await _build_out(schedule, db)
 
 
 @router.get("/{schedule_date}", response_model=ScheduleOut)
-async def get_schedule(schedule_date: date, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Schedule).where(Schedule.date == schedule_date))
-    schedule = result.scalar_one_or_none()
+async def get_schedule(schedule_date: datetime.date, db: AsyncSession = Depends(get_db)):
+    schedule = (await db.execute(select(Schedule).where(Schedule.date == schedule_date))).scalar_one_or_none()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
-    return await _build_schedule_out(schedule, db)
+    return await _build_out(schedule, db)
 
 
-@router.get("/{schedule_date}/pdf")
-async def download_pdf(schedule_date: date, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Schedule).where(Schedule.date == schedule_date))
-    schedule = result.scalar_one_or_none()
+async def _get_or_404(db: AsyncSession, schedule_date: datetime.date) -> Schedule:
+    schedule = (await db.execute(select(Schedule).where(Schedule.date == schedule_date))).scalar_one_or_none()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    return schedule
 
-    schedule_out = await _build_schedule_out(schedule, db)
-    pdf_bytes = generate_schedule_pdf(schedule_out)
 
-    return StreamingResponse(
-        BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=vardiya-{schedule_date}.pdf"},
-    )
+def _pdf_response(pdf_bytes: bytes, filename: str) -> StreamingResponse:
+    return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf",
+                             headers={"Content-Disposition": f'inline; filename="{filename}"'})
+
+
+@router.get("/{schedule_date}/pdf/band-sheet")
+async def download_band_sheet(schedule_date: datetime.date, db: AsyncSession = Depends(get_db)):
+    schedule = await _get_or_404(db, schedule_date)
+    return _pdf_response(generate_band_sheet(await _build_out(schedule, db)), f"bandlista-{schedule_date}.pdf")
+
+
+@router.get("/{schedule_date}/pdf/report")
+async def download_shift_report(schedule_date: datetime.date, db: AsyncSession = Depends(get_db)):
+    schedule = await _get_or_404(db, schedule_date)
+    _, loads_by_worker, _ = await load_workers_with_window(db, schedule.date)
+    recent = {wid: [(l.date, l.packages_handled, l.heavy_packages) for l in sorted(loads, key=lambda x: x.date, reverse=True)]
+              for wid, loads in loads_by_worker.items()}
+    return _pdf_response(generate_shift_report(await _build_out(schedule, db), recent), f"skiftrapport-{schedule_date}.pdf")

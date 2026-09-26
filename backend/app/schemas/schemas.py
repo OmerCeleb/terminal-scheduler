@@ -1,4 +1,5 @@
-from datetime import date, datetime
+import datetime
+from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 
@@ -11,23 +12,23 @@ class BandCreate(BandBase):
 class BandOut(BandBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    created_at: datetime
+    created_at: datetime.datetime
 
 class BandDailyLoadUpsert(BaseModel):
-    date: date
+    date: datetime.date
     packages: int
 
 class BandDailyLoadOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     band_id: int
-    date: date
+    date: datetime.date
     packages: int
 
 
 class WorkerBase(BaseModel):
     name: str
-    capacity: int = 300
+    role: str = "band"
 
 class WorkerCreate(WorkerBase):
     pass
@@ -36,22 +37,43 @@ class WorkerOut(WorkerBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     is_active: bool
-    created_at: datetime
+    created_at: datetime.datetime
 
 class WorkerDailyLoadUpsert(BaseModel):
-    date: date
+    date: datetime.date
     packages_handled: int
+    heavy_packages: int = 0
+    weight_kg: Optional[float] = None
+
+class WorkerDailyLoadOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    date: datetime.date
+    packages_handled: int
+    heavy_packages: int
+    weight_kg: Optional[float]
+    source: str
 
 class WorkerWithFatigue(WorkerOut):
-    yesterday_packages: int = 0
-    fatigue_score: float = 0.0
+    recent_loads: list[WorkerDailyLoadOut] = []
+    fatigue_score: float = 50.0
+
+
+class ScannerImportRow(BaseModel):
+    worker_name: str
+    date: datetime.date
+    packages: int
+    heavy_packages: int = 0
+    weight_kg: Optional[float] = None
+
+class ScannerImportResult(BaseModel):
+    imported: int
+    skipped: list[str]
 
 
 class ScheduleGenerateRequest(BaseModel):
-    date: date
+    date: datetime.date
 
 class AssignmentOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     band_id: int
     band_name: str
     band_packages: int
@@ -59,9 +81,21 @@ class AssignmentOut(BaseModel):
     worker_name: str
     fatigue_score: float
 
-class ScheduleOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class WorkerRef(BaseModel):
     id: int
-    date: date
-    generated_at: datetime
+    name: str
+    fatigue_score: float
+
+class BandRef(BaseModel):
+    id: int
+    name: str
+    packages: int
+
+class ScheduleOut(BaseModel):
+    id: int
+    date: datetime.date
+    generated_at: datetime.datetime
     assignments: list[AssignmentOut]
+    stod: list[WorkerRef] = []
+    unassigned: list[WorkerRef] = []
+    empty_bands: list[BandRef] = []

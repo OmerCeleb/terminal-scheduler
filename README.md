@@ -1,115 +1,104 @@
 # Terminal Scheduler
 
-A shift-assignment tool for parcel sorting terminals. It distributes workers across conveyor bands based on how hard each person worked the previous day, so the heaviest bands go to the least fatigued staff.
+Fair conveyor-band assignment for parcel terminal shifts, based on each worker's actual load over the last three days.
 
-Built as a personal project, from a problem I ran into working night shifts at a logistics terminal: band assignments were made by hand every morning, and nothing tracked who had been hammered the day before.
+Built by a night-shift terminal worker to solve a problem lived every shift: the supervisor assigns bands by hand, the same people end up on the heaviest bands night after night, and nobody can show why.
+
+**Status:** working MVP, manual data entry, internal prototype. Not connected to any PostNord system.
+
+---
 
 ## The problem
 
-A sorting terminal has several conveyor bands. Each band gets a different parcel volume on any given day — one might handle 1,250 parcels while another handles 400. Supervisors assign staff to bands at the start of the shift, usually from memory and habit.
+Before every shift the supervisor has a per-band package forecast. Assigning people to bands is done by hand and memory. Load is uneven: a worker who cleared 2 400 packages last night can land on the heaviest band again today. That produces two things a terminal cannot afford — staff who feel the schedule is unfair, and physical load that is never measured per person.
 
-Two things go wrong with that:
+Swedish regulation (AFS 2023:10, belastningsergonomi) does not set a maximum weight, but requires the employer to assess *how heavy, how often, for how long* each worker is loaded, and to prevent "unnecessarily tiring" work. Arbetsmiljöverket's own method (KIM) scores load in weight classes, not linear kilograms.
 
-- Nobody tracks cumulative load. The same people end up on the heavy bands repeatedly.
-- Assignments are made on a phone, standing on the floor, in about two minutes. There is no time to work anything out on paper.
+This tool does that assessment continuously and uses it to distribute work.
 
-This tool takes the day's forecast per band, looks at yesterday's actual load per worker, and proposes an assignment.
+## What it does
 
-## Fatigue score
+1. Supervisor enters tonight's forecast per band (from the volume report — quick numeric entry, one band after another).
+2. Supervisor confirms who is working tonight; each person's last three shifts are already on record.
+3. The app computes a **load score per worker** and assigns the heaviest bands to the most rested people. One person per band; *stöd* (float) workers are listed separately.
+4. Two PDFs: a **band sheet** for the wall (band → name, no personal data) and a **shift report** for the supervisor (scores, history, fairness index, warnings).
 
-The core metric is deliberately simple, because it has to be explainable to a supervisor in one sentence:
+## Load model
 
-```
-fatigue_score = (yesterday_packages / worker_capacity) * 100
-```
+effort(worker) = Σ over last 3 shifts of light_packages + HEAVY_FACTOR × heavy_packages
+score(worker) = effort / team_average_effort × 50
 
-Bands are sorted by parcel volume, workers are sorted by fatigue score, and the freshest workers are matched to the heaviest bands.
 
-The score is stored on each assignment rather than recalculated on read. Yesterday's figures can be corrected after the fact, and a schedule should show the numbers it was actually generated from.
+- **50 = team average.** Under 50 is *rested*, over 70 is *loaded*.
+- **Heavy package** = over 10 kg. Counted with `HEAVY_FACTOR = 3` — KIM-inspired weight classes rather than total kilograms, because 100 light bags do not tire like 5 heavy boxes. To be calibrated against scanner data.
+- **No history = average.** A new worker or someone back from leave gets 50, not 0.
+- **Team-relative, not capacity-based.** The goal is fairness over time, not a fixed daily quota.
+
+Assignment is deterministic: bands sorted by volume descending, band-role workers sorted by score ascending, zipped. Surplus workers and empty bands are reported, never silently dropped.
+
+## Scanner integration (open door)
+
+PostNord scanners are moving to individual logins to track packages and weight per person — exactly the input this model needs. `POST /api/imports/scanner` accepts per-worker daily totals (`worker_name, date, packages, heavy_packages, weight_kg`) and writes them into the same table manual entry uses, tagged `source: "scanner"`. Once an export or API is available, manual entry becomes optional and nothing else changes.
 
 ## Stack
 
-**Backend** — FastAPI, SQLAlchemy 2.0 (async), PostgreSQL, JWT auth, ReportLab for PDF export
+- **Backend:** FastAPI, SQLAlchemy (async), PostgreSQL, ReportLab. JWT auth, single admin user from `.env`.
+- **Frontend:** Next.js 16 (App Router), Tailwind 4, Framer Motion. Mobile-first, Swedish UI, light/dark via system setting.
+- **Infra:** Docker Compose for Postgres. Backend and frontend run locally in development.
 
-**Frontend** — Next.js 16 (App Router, Turbopack), TypeScript, Tailwind CSS, Framer Motion
-
-**Infrastructure** — Docker Compose for the database
-
-The UI is in Swedish and built mobile-first, because supervisors use it on a phone while walking the floor.
-
-## Running it locally
-
-Requires Docker, Python 3.9+, and Node 18+.
-
-### Database
+## Run it
 
 ```bash
-cd backend
-docker compose up -d db
-docker compose ps          # wait for "healthy"
-```
+# 1. database
+cd backend && cp .env.example .env   # set ADMIN_USERNAME / ADMIN_PASSWORD
+docker compose up -d
 
-### Backend
-
-```bash
-cd backend
-cp .env.example .env       # edit ADMIN_PASSWORD and SECRET_KEY
-python -m venv venv
-source venv/bin/activate
+# 2. backend
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
-```
 
-Tables are created on startup. API docs are at `http://localhost:8000/api/docs`.
-
-### Frontend
-
-```bash
-cd frontend
-npm install
+# 3. frontend (new terminal)
+cd frontend && npm install
 echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
 npm run dev
+
+# 4. demo data (optional, with the API running)
+cd backend && python seed.py
 ```
 
-Open `http://localhost:3000` and log in with the credentials from your `.env`.
+Open `http://localhost:3000`. API docs at `http://localhost:8000/api/docs`.
 
-### Trying it out
+To test on a phone: run the frontend with `npm run dev -- -H 0.0.0.0`, set `NEXT_PUBLIC_API_URL` to your machine's LAN IP, and add that origin to `CORS_ORIGINS` in `backend/app/main.py`.
 
-1. Add a few bands under **Band**
-2. Add workers with different capacities under **Personal**
-3. Enter yesterday's parcel count for each worker
-4. Enter today's forecast per band
-5. Generate the schedule under **Schema**
+## API
 
-Workers with the lowest fatigue score should land on the highest-volume bands. A PDF of the schedule can be downloaded from the same screen.
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/auth/login` | JWT login (form: username, password) |
+| GET/POST/DELETE | `/api/bands/` | Bands |
+| PUT | `/api/bands/{id}/load` | Package forecast for a date |
+| GET/POST/PATCH/DELETE | `/api/workers/` | Workers with `role: band \| stod`; GET includes 3-day history and score |
+| PUT | `/api/workers/{id}/load` | Packages + heavy packages for a date |
+| POST | `/api/imports/scanner` | Bulk import of per-worker daily totals |
+| POST | `/api/schedules/generate` | Generate (or regenerate) a schedule for a date |
+| GET | `/api/schedules/{date}` | Schedule with assignments, stöd, unassigned, empty bands |
+| GET | `/api/schedules/{date}/pdf/band-sheet` | Wall sheet PDF |
+| GET | `/api/schedules/{date}/pdf/report` | Supervisor report PDF |
 
 ## Known limitations
 
-This is an MVP and the gaps below are known rather than overlooked. They are roughly in priority order.
-
-**Capacity is not enforced.** `capacity` is only used as the denominator of the fatigue score. Nothing checks whether the workers assigned to a band can actually handle its volume, so the system will happily assign one person with a capacity of 300 to a band with 5,000 parcels and report no problem. Headcount per band is the main missing piece.
-
-**Regeneration can lose data.** Generating a schedule for a date that already has one deletes the existing schedule and commits before validating the new inputs. If the band load records are missing, the old schedule is gone and nothing replaces it.
-
-**Missing load records are read as zero fatigue.** A worker with no record for yesterday is treated as fully rested, so someone whose data was simply never entered gets sent to the heaviest band. Absent, untracked, and newly hired are three different situations that currently look identical.
-
-**No uniqueness constraint on daily loads.** `(band_id, date)` and `(worker_id, date)` are not unique, so duplicate rows are possible. The query path uses `scalar_one_or_none()`, which raises rather than returning `None` when it finds more than one row.
-
-**Schedule endpoints are unauthenticated.** JWT auth exists and the login flow works, but the schedule routes do not depend on it. That includes the PDF export, which contains staff names.
-
-**No manual override.** There is no endpoint to change an assignment after generation, and generation writes directly rather than proposing first. A supervisor cannot adjust the result, which is a real obstacle to floor adoption.
-
-**Bands can be left empty silently.** If there are fewer workers than bands, some bands get nobody and the response says nothing about it.
-
-**No migrations.** Tables are created with `create_all` on startup, so schema changes will not propagate to an existing database. Alembic is installed but not initialised.
-
-**N+1 queries.** Building a schedule response issues separate queries per assignment. Fine at current scale, noticeable on a larger roster.
+- Single hardcoded admin user; schedule and import endpoints are not yet behind auth.
+- No absence handling (sick leave, vacation) — a worker is either active or deactivated.
+- No manual override of a generated schedule; regenerate only.
+- `HEAVY_FACTOR` and the 3-day window are assumptions, not calibrated values.
+- No database migrations (tables are created on startup; schema changes require a reset).
+- Python 3.9 compatibility constraints; `middleware.ts` uses a deprecated Next.js pattern.
 
 ## Roadmap
 
-- Headcount calculation per band, with a warning when total capacity is short of total volume
-- Distinguish absent / no data / new hire instead of defaulting to zero fatigue
-- Auth on all endpoints
-- Preview-then-confirm flow with manual override
-- Multi-shift support (currently one schedule per date)
-- Alembic migrations
+- Absence and partial-shift handling
+- Manual override with audit trail
+- Camera-based entry of the volume report (OCR)
+- Calibrate the load model against real scanner data
+- Multi-user accounts per supervisor

@@ -1,19 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Package, Users, AlertTriangle, TrendingDown, ArrowRight, Calendar } from 'lucide-react'
+import { Package, Users, CalendarDays, ArrowRight, Check, Circle, LifeBuoy, Moon, Sun } from 'lucide-react'
 import { getBands, getWorkers, getSchedule } from '@/lib/api'
 import { todayStr, swedishDate, fatigueLabel } from '@/lib/helpers'
-import Link from 'next/link'
+import { Card, IconBadge } from '@/components/ui/primitives'
 import type { Band, Worker, Schedule } from '@/types'
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  show: (i: number) => ({
-    opacity: 1, y: 0,
-    transition: { delay: i * 0.08, duration: 0.4, ease: [0.22, 1, 0.36, 1] as const },
-  }),
+function shiftLabel() {
+  const h = new Date().getHours()
+  if (h >= 22 || h < 6) return { label: 'Nattskift', icon: Moon }
+  if (h < 14) return { label: 'Dagskift', icon: Sun }
+  return { label: 'Kvällsskift', icon: Moon }
 }
 
 export default function DashboardPage() {
@@ -30,187 +30,148 @@ export default function DashboardPage() {
     ]).finally(() => setLoading(false))
   }, [])
 
-  const highFatigue = workers.filter((w) => w.fatigue_score >= 80)
-  const avgFatigue = workers.length
-    ? Math.round(workers.reduce((s, w) => s + w.fatigue_score, 0) / workers.length)
-    : 0
+  const shift = shiftLabel()
+  const ShiftIcon = shift.icon
+  const bandWorkers = workers.filter((w) => w.role === 'band')
+  const stodWorkers = workers.filter((w) => w.role === 'stod')
+  const workersWithData = workers.filter((w) => w.recent_loads.length > 0).length
 
-  const stats = [
-    { label: 'Band', value: bands.length, icon: Package, accent: '#003087', bg: 'rgba(0,48,135,0.07)' },
-    { label: 'Personal', value: workers.length, icon: Users, accent: '#6366f1', bg: 'rgba(99,102,241,0.07)' },
-    { label: 'Hög utmattning', value: highFatigue.length, icon: AlertTriangle, accent: '#ef4444', bg: 'rgba(239,68,68,0.07)' },
-    { label: 'Medelutmattning', value: `${avgFatigue}%`, icon: TrendingDown, accent: '#b45309', bg: 'rgba(255,204,0,0.12)' },
+  const steps = [
+    {
+      href: '/bands', icon: Package, label: 'Bandvolymer',
+      detail: bands.length ? `${bands.length} band registrerade` : 'Inga band ännu',
+      done: bands.length > 0,
+    },
+    {
+      href: '/workers', icon: Users, label: 'Personal & belastning',
+      detail: workers.length ? `${workersWithData} av ${workers.length} har data` : 'Ingen personal ännu',
+      done: workers.length > 0 && workersWithData === workers.length,
+    },
+    {
+      href: '/schedule', icon: CalendarDays, label: 'Schema',
+      detail: schedule ? `Genererat ${new Date(schedule.generated_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}` : 'Inte genererat',
+      done: !!schedule,
+    },
   ]
+  const doneCount = steps.filter((s) => s.done).length
+  const nextStep = steps.find((s) => !s.done)
+
+  const sortedByLoad = [...workers].sort((a, b) => b.fatigue_score - a.fatigue_score)
 
   return (
     <div className="max-w-lg mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="mb-5"
-      >
-        <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: '#003087' }}>
-          {swedishDate(todayStr())}
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mb-5">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] mb-1 flex items-center gap-1.5" style={{ color: 'var(--pn-blue)' }}>
+          <ShiftIcon className="w-3 h-3" /> {shift.label}
         </p>
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">God morgon 👋</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight capitalize" style={{ color: 'var(--ink)' }}>{swedishDate(todayStr())}</h1>
       </motion.div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        {stats.map((s, i) => {
+      {/* Readiness */}
+      <Card initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="mb-4">
+        <div className="px-5 pt-4 pb-3 flex items-center justify-between">
+          <div>
+            <p className="font-bold text-sm" style={{ color: 'var(--ink)' }}>Skiftförberedelse</p>
+            <p className="text-xs" style={{ color: 'var(--ink-3)' }}>{doneCount} av {steps.length} klart</p>
+          </div>
+          <div className="flex gap-1">
+            {steps.map((s, i) => (
+              <motion.div key={i} className="h-1.5 w-8 rounded-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 + i * 0.08 }}
+                style={{ background: s.done ? 'var(--f-rested)' : 'var(--surface-2)' }} />
+            ))}
+          </div>
+        </div>
+        <div style={{ borderTop: '1px solid var(--line)' }}>
+          {steps.map((s, i) => {
+            const Icon = s.icon
+            const isNext = nextStep?.href === s.href
+            return (
+              <Link key={s.href} href={s.href}>
+                <motion.div
+                  initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + i * 0.07 }}
+                  whileTap={{ scale: 0.99 }}
+                  className="px-5 py-3.5 flex items-center gap-3"
+                  style={{ borderTop: i ? '1px solid var(--line)' : undefined, background: isNext ? 'var(--pn-blue-soft)' : undefined }}
+                >
+                  <IconBadge tone={s.done ? 'rested' : isNext ? 'blue' : 'muted'} size={34}>
+                    {s.done ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                  </IconBadge>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{s.label}</p>
+                    <p className="text-xs truncate" style={{ color: 'var(--ink-3)' }}>{loading ? '…' : s.detail}</p>
+                  </div>
+                  {isNext
+                    ? <span className="text-[11px] font-bold px-2 py-1 rounded-full flex items-center gap-1" style={{ background: 'var(--pn-blue)', color: 'white' }}>Nästa <ArrowRight className="w-3 h-3" /></span>
+                    : <Circle className="w-4 h-4" style={{ color: 'var(--ink-3)', opacity: s.done ? 0 : 1 }} />}
+                </motion.div>
+              </Link>
+            )
+          })}
+        </div>
+      </Card>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {[
+          { label: 'Band', value: bands.length, tone: 'blue' as const, icon: Package },
+          { label: 'Bandpersonal', value: bandWorkers.length, tone: 'blue' as const, icon: Users },
+          { label: 'Stöd', value: stodWorkers.length, tone: 'yellow' as const, icon: LifeBuoy },
+        ].map((s, i) => {
           const Icon = s.icon
           return (
-            <motion.div
-              key={s.label}
-              custom={i}
-              initial="hidden"
-              animate="show"
-              variants={fadeUp}
-              className="bg-white rounded-2xl p-4 border border-gray-100"
-            >
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: s.bg }}>
-                <Icon className="w-4 h-4" style={{ color: s.accent }} />
-              </div>
-              <p className="text-xl font-bold text-gray-900">{loading ? '—' : s.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5 font-medium">{s.label}</p>
-            </motion.div>
+            <Card key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 + i * 0.06 }} className="p-3.5">
+              <IconBadge tone={s.tone} size={30}><Icon className="w-3.5 h-3.5" /></IconBadge>
+              <p className="text-xl font-extrabold mt-2.5 tabular-nums" style={{ color: 'var(--ink)' }}>{loading ? '—' : s.value}</p>
+              <p className="text-[11px] font-medium" style={{ color: 'var(--ink-3)' }}>{s.label}</p>
+            </Card>
           )
         })}
       </div>
 
-      {/* CTA */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35, duration: 0.4 }}
-        className="mb-5"
-      >
-        <Link href="/schedule">
-          <motion.div
-            whileTap={{ scale: 0.97 }}
-            className="w-full flex items-center justify-between px-5 py-4 rounded-2xl text-white"
-            style={{ background: 'linear-gradient(135deg, #003087 0%, #0050cc 100%)' }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
-                <Calendar className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="font-bold text-sm">Generera schema</p>
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>Automatisk tilldelning</p>
-              </div>
-            </div>
-            <ArrowRight className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.6)' }} />
-          </motion.div>
-        </Link>
-      </motion.div>
-
-      {/* Today's schedule */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45, duration: 0.4 }}
-        className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-5"
-      >
-        <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-          <h2 className="font-bold text-gray-900 text-sm">Dagens schema</h2>
-          {schedule && (
-            <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(0,48,135,0.07)', color: '#003087' }}>
-              {new Set(schedule.assignments.map(a => a.band_id)).size} band
-            </span>
-          )}
-        </div>
-        {schedule ? (
-          <div className="divide-y divide-gray-50">
-            {Object.entries(
-              schedule.assignments.reduce((acc, a) => {
-                if (!acc[a.band_name]) acc[a.band_name] = { packages: a.band_packages, workers: [] }
-                acc[a.band_name].workers.push(a.worker_name)
-                return acc
-              }, {} as Record<string, { packages: number; workers: string[] }>)
-            ).map(([band, data], i) => (
-              <motion.div
-                key={band}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 + i * 0.04 }}
-                className="px-5 py-3.5 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'rgba(0,48,135,0.06)' }}>
-                    <Package className="w-3.5 h-3.5" style={{ color: '#003087' }} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{band}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{data.workers.join(', ')}</p>
-                  </div>
-                </div>
-                <span className="text-sm font-bold" style={{ color: '#003087' }}>
-                  {data.packages.toLocaleString('sv-SE')}
-                </span>
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <div className="px-5 py-10 text-center">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: 'rgba(0,48,135,0.06)' }}>
-              <Calendar className="w-6 h-6" style={{ color: '#003087' }} />
-            </div>
-            <p className="text-sm font-semibold text-gray-600">Inget schema för idag</p>
-            <p className="text-xs text-gray-400 mt-1">Tryck på Generera schema</p>
-          </div>
-        )}
-      </motion.div>
-
-      {/* Fatigue list */}
+      {/* Load distribution */}
       {workers.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55, duration: 0.4 }}
-          className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
-        >
-          <div className="px-5 py-4 border-b border-gray-50">
-            <h2 className="font-bold text-gray-900 text-sm">Utmattningsstatus</h2>
+        <Card initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }} className="mb-4">
+          <div className="px-5 pt-4 pb-2 flex items-baseline justify-between">
+            <p className="font-bold text-sm" style={{ color: 'var(--ink)' }}>Belastning senaste 3 dagarna</p>
+            <p className="text-[11px]" style={{ color: 'var(--ink-3)' }}>50 = lagsnitt</p>
           </div>
-          <div className="divide-y divide-gray-50">
-            {workers.slice(0, 5).map((w, i) => {
+          <div className="px-5 pb-4 space-y-2.5">
+            {sortedByLoad.map((w, i) => {
               const f = fatigueLabel(w.fatigue_score)
-              const pct = Math.min(Math.round(w.fatigue_score), 100)
+              const pct = Math.min(w.fatigue_score, 100)
               return (
-                <motion.div
-                  key={w.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.6 + i * 0.04 }}
-                  className="px-5 py-3.5"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ background: '#003087' }}>
-                        {w.name.charAt(0).toUpperCase()}
-                      </div>
-                      <span className="text-sm font-semibold text-gray-800">{w.name}</span>
-                    </div>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${f.bg} ${f.color}`}>
-                      {pct}%
-                    </span>
+                <div key={w.id} className="flex items-center gap-3">
+                  <span className="w-20 truncate text-xs font-semibold" style={{ color: 'var(--ink-2)' }}>{w.name}</span>
+                  <div className="flex-1 relative h-2 rounded-full" style={{ background: 'var(--surface-2)' }}>
+                    <div className="absolute top-[-3px] bottom-[-3px] w-px" style={{ left: '50%', background: 'var(--ink-3)' }} />
+                    <motion.div className="h-full rounded-full" style={{ background: f.bar }}
+                      initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, delay: 0.5 + i * 0.05, ease: 'easeOut' }} />
                   </div>
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.05)' }}>
-                    <motion.div
-                      className="h-full rounded-full"
-                      style={{ background: pct >= 80 ? '#ef4444' : pct >= 50 ? '#f59e0b' : '#22c55e' }}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.6, delay: 0.65 + i * 0.04, ease: 'easeOut' }}
-                    />
-                  </div>
-                </motion.div>
+                  <span className="w-8 text-right text-xs font-bold tabular-nums" style={{ color: f.bar }}>{Math.round(w.fatigue_score)}</span>
+                </div>
               )
             })}
           </div>
-        </motion.div>
+        </Card>
+      )}
+
+      {/* Today's schedule summary */}
+      {schedule && (
+        <Card initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}>
+          <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid var(--line)' }}>
+            <p className="font-bold text-sm" style={{ color: 'var(--ink)' }}>Dagens schema</p>
+            <Link href="/schedule" className="text-xs font-bold flex items-center gap-1" style={{ color: 'var(--pn-blue)' }}>Visa <ArrowRight className="w-3 h-3" /></Link>
+          </div>
+          {schedule.assignments.map((a, i) => (
+            <div key={a.band_id} className="px-5 py-3 flex items-center justify-between" style={{ borderTop: i ? '1px solid var(--line)' : undefined }}>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold px-2 py-1 rounded-lg tabular-nums" style={{ background: 'var(--pn-blue-soft)', color: 'var(--pn-blue)' }}>{a.band_name}</span>
+                <span className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{a.worker_name}</span>
+              </div>
+              <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--ink-2)' }}>{a.band_packages.toLocaleString('sv-SE')} pkt</span>
+            </div>
+          ))}
+        </Card>
       )}
     </div>
   )

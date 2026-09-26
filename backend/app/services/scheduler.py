@@ -1,4 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
+
+ROLLING_DAYS = 3
+HEAVY_THRESHOLD_KG = 10
+# KIM-inspired: load is counted in weight classes, not linear kg.
+# A heavy package (> HEAVY_THRESHOLD_KG) counts as HEAVY_FACTOR light ones. Calibrate against scanner data.
+HEAVY_FACTOR = 3.0
 
 
 @dataclass
@@ -9,17 +16,28 @@ class BandInput:
 
 
 @dataclass
+class DailyLoad:
+    packages: int
+    heavy_packages: int = 0
+
+
+@dataclass
 class WorkerInput:
     id: int
     name: str
-    capacity: int
-    yesterday_packages: int
+    role: str = "band"  # "band" | "stod"
+    loads: list = field(default_factory=list)  # DailyLoad entries for the rolling window
 
     @property
-    def fatigue_score(self) -> float:
-        if self.capacity <= 0:
-            return 100.0
-        return round((self.yesterday_packages / self.capacity) * 100, 1)
+    def effort(self) -> Optional[float]:
+        """Combined effort over the window; None when the worker has no records at all."""
+        if not self.loads:
+            return None
+        total = 0.0
+        for load in self.loads:
+            light = max(load.packages - load.heavy_packages, 0)
+            total += light + load.heavy_packages * HEAVY_FACTOR
+        return total
 
 
 @dataclass
@@ -29,37 +47,52 @@ class AssignmentResult:
     fatigue_score: float
 
 
-def run_assignment(bands: list[BandInput], workers: list[WorkerInput]) -> list[AssignmentResult]:
-    if not bands or not workers:
-        return []
+@dataclass
+class ScheduleResult:
+    assignments: list
+    stod: list  # WorkerInput with role "stod", not assigned to a band
+    unassigned: list  # band-role workers left over when there are more workers than bands
+    empty_bands: list  # BandInput left without a worker
+    fatigue_scores: dict  # worker_id -> score
+
+
+def compute_fatigue_scores(workers: list) -> dict:
+    """
+    score = (worker effort / team average effort) * 50
+    50 = average load, 100 = twice the average.
+    Workers with no records are treated as average.
+    """
+    efforts = {w.id: w.effort for w in workers}
+    known = [e for e in efforts.values() if e is not None]
+    avg = sum(known) / len(known) if known else 0.0
+
+    scores = {}
+    for wid, effort in efforts.items():
+        if effort is None or avg == 0:
+            scores[wid] = 50.0
+        else:
+            scores[wid] = round((effort / avg) * 50, 1)
+    return scores
+
+
+def run_assignment(bands: list, workers: list) -> ScheduleResult:
+    scores = compute_fatigue_scores(workers)
+
+    stod = [w for w in workers if w.role == "stod"]
+    band_workers = [w for w in workers if w.role != "stod"]
 
     sorted_bands = sorted(bands, key=lambda b: b.packages, reverse=True)
-    sorted_workers = sorted(workers, key=lambda w: w.fatigue_score)
+    sorted_workers = sorted(band_workers, key=lambda w: scores[w.id])
 
-    workers_per_band = max(1, len(sorted_workers) // len(sorted_bands))
-    extra = len(sorted_workers) - workers_per_band * len(sorted_bands)
+    assignments = []
+    for band, worker in zip(sorted_bands, sorted_workers):
+        assignments.append(AssignmentResult(band=band, worker=worker, fatigue_score=scores[worker.id]))
 
-    results: list[AssignmentResult] = []
-    wi = 0
-
-    for bi, band in enumerate(sorted_bands):
-        count = workers_per_band + (1 if bi < extra else 0)
-        for _ in range(count):
-            if wi >= len(sorted_workers):
-                break
-            worker = sorted_workers[wi]
-            results.append(AssignmentResult(
-                band=band,
-                worker=worker,
-                fatigue_score=worker.fatigue_score,
-            ))
-            wi += 1
-
-    for i, worker in enumerate(sorted_workers[wi:]):
-        results.append(AssignmentResult(
-            band=sorted_bands[i % len(sorted_bands)],
-            worker=worker,
-            fatigue_score=worker.fatigue_score,
-        ))
-
-    return results
+    n = len(assignments)
+    return ScheduleResult(
+        assignments=assignments,
+        stod=stod,
+        unassigned=sorted_workers[n:],
+        empty_bands=sorted_bands[n:],
+        fatigue_scores=scores,
+    )

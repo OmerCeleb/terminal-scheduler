@@ -3,18 +3,24 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Eye, EyeOff, ArrowRight, Truck } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, Truck, Scale, Package, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { setToken } from '@/lib/auth'
 import { BASE_URL } from '@/lib/api'
+import { TextInput, PrimaryButton } from '@/components/ui/primitives'
+
+const POINTS = [
+  { icon: Package, text: 'Bandvolymer från prognosen' },
+  { icon: Users, text: 'Belastning per person, senaste 3 dagarna' },
+  { icon: Scale, text: 'Tyngsta banden till de mest utvilade' },
+]
 
 export default function LoginPage() {
   const router = useRouter()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
+  const [show, setShow] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [focused, setFocused] = useState<string | null>(null)
 
   const handleLogin = async () => {
     if (!username || !password) return
@@ -23,221 +29,98 @@ export default function LoginPage() {
       const form = new FormData()
       form.append('username', username)
       form.append('password', password)
-      const res = await fetch(`${BASE_URL}/api/auth/login`, {        method: 'POST',
-        body: form,
-      })
+      const res = await fetch(`${BASE_URL}/api/auth/login`, { method: 'POST', body: form })
       if (!res.ok) throw new Error('Felaktigt användarnamn eller lösenord')
       const data = await res.json()
       setToken(data.access_token)
-      toast.success('Inloggad!')
       router.push('/dashboard')
     } catch (e: any) {
       toast.error(e.message || 'Inloggning misslyckades')
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#f5f4f0' }}>
-      {/* Left panel */}
+    <div className="min-h-screen flex flex-col lg:flex-row" style={{ background: 'var(--surface-0)' }}>
+      {/* Brand panel */}
       <motion.div
-        initial={{ x: -60, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-        className="hidden lg:flex w-1/2 flex-col justify-between p-16 relative overflow-hidden"
-        style={{ background: '#003087' }}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6 }}
+        className="relative overflow-hidden text-white lg:w-1/2 flex flex-col justify-between px-6 pb-8 lg:p-14"
+        style={{ background: 'var(--pn-blue-strong)', paddingTop: 'max(env(safe-area-inset-top), 24px)' }}
       >
-        <div className="absolute inset-0 overflow-hidden">
-          {[...Array(6)].map((_, i) => (
-            <motion.div
-              key={i}
-              className="absolute rounded-full"
-              style={{
-                width: `${120 + i * 80}px`,
-                height: `${120 + i * 80}px`,
-                border: '1px solid rgba(255,255,255,0.06)',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-              }}
-              animate={{ rotate: 360 }}
-              transition={{ duration: 20 + i * 5, repeat: Infinity, ease: 'linear' }}
-            />
+        <div className="absolute inset-0 pointer-events-none">
+          {[0, 1, 2, 3].map((i) => (
+            <motion.div key={i} className="absolute rounded-full border"
+              style={{ width: 260 + i * 140, height: 260 + i * 140, borderColor: 'rgba(255,255,255,0.05)', right: -80 - i * 40, bottom: -120 - i * 50 }}
+              animate={{ rotate: 360 }} transition={{ duration: 40 + i * 12, repeat: Infinity, ease: 'linear' }} />
           ))}
-          <motion.div
-            className="absolute bottom-0 right-0 w-96 h-96 rounded-full"
-            style={{ background: 'rgba(255,204,0,0.08)', filter: 'blur(60px)', transform: 'translate(30%, 30%)' }}
-          />
+          <div className="absolute -right-24 -bottom-24 w-72 h-72 rounded-full" style={{ background: 'var(--pn-yellow)', opacity: 0.08, filter: 'blur(50px)' }} />
         </div>
 
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#FFCC00' }}>
-              <Truck className="w-5 h-5" style={{ color: '#003087' }} />
-            </div>
-            <span className="text-white font-semibold text-lg tracking-tight">PostNord</span>
+        <div className="relative flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'var(--pn-yellow)' }}>
+            <Truck className="w-4 h-4" style={{ color: '#003087' }} />
+          </div>
+          <span className="font-extrabold tracking-tight">Terminalschema</span>
+        </div>
+
+        <div className="relative mt-10 lg:mt-0">
+          <motion.h2 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.6 }}
+            className="text-3xl lg:text-4xl font-extrabold leading-tight tracking-tight">
+            Rättvis fördelning,<br />varje skift.
+          </motion.h2>
+          <div className="mt-6 space-y-3">
+            {POINTS.map((p, i) => {
+              const Icon = p.icon
+              return (
+                <motion.div key={p.text} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.35 + i * 0.1 }}
+                  className="flex items-center gap-3 text-sm" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                    <Icon className="w-3.5 h-3.5" style={{ color: 'var(--pn-yellow)' }} />
+                  </div>
+                  {p.text}
+                </motion.div>
+              )
+            })}
           </div>
         </div>
 
-        <div className="relative z-10 space-y-6">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.7 }}
-          >
-            <h2 className="text-4xl font-bold text-white leading-tight tracking-tight">
-              Terminal<br />Schemaläggare
-            </h2>
-            <p className="text-blue-200 mt-4 text-base leading-relaxed max-w-sm">
-              Automatisk schemaläggning baserad på medarbetarnas utmattningsnivå. Smartare fördelning, effektivare terminal.
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.6 }}
-            className="flex gap-8"
-          >
-            {[['98%', 'Noggrannhet'], ['3x', 'Snabbare'], ['↓40%', 'Utmattning']].map(([val, label]) => (
-              <div key={label}>
-                <p className="text-2xl font-bold" style={{ color: '#FFCC00' }}>{val}</p>
-                <p className="text-blue-300 text-xs mt-0.5">{label}</p>
-              </div>
-            ))}
-          </motion.div>
-        </div>
-
-        <div className="relative z-10">
-          <p className="text-blue-400 text-xs">© 2024 PostNord Terminal System</p>
-        </div>
+        <p className="relative hidden lg:block text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>© {new Date().getFullYear()} · Intern prototyp</p>
       </motion.div>
 
-      {/* Right panel */}
-      <div className="flex-1 flex items-center justify-center p-8">
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="w-full max-w-sm"
-        >
-          <div className="lg:hidden flex items-center gap-3 mb-10">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#003087' }}>
-              <Truck className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-semibold text-gray-900">PostNord Terminal</span>
-          </div>
-
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Välkommen tillbaka</h1>
-            <p className="text-gray-500 mt-1 text-sm">Logga in på ditt administratörskonto</p>
-          </div>
+      {/* Form */}
+      <div className="flex-1 flex items-center justify-center px-6 py-10">
+        <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.25 }} className="w-full max-w-sm">
+          <h1 className="text-2xl font-extrabold tracking-tight" style={{ color: 'var(--ink)' }}>Logga in</h1>
+          <p className="text-sm mt-1 mb-7" style={{ color: 'var(--ink-3)' }}>Endast för skiftledare</p>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
-                Användarnamn
-              </label>
-              <motion.div
-                animate={{ scale: focused === 'username' ? 1.01 : 1 }}
-                transition={{ duration: 0.15 }}
-                className="relative"
-              >
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  onFocus={() => setFocused('username')}
-                  onBlur={() => setFocused(null)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                  placeholder="admin"
-                  className="w-full px-4 py-3 rounded-xl border-2 text-sm transition-all duration-200 outline-none bg-white"
-                  style={{
-                    borderColor: focused === 'username' ? '#003087' : '#e5e7eb',
-                    boxShadow: focused === 'username' ? '0 0 0 4px rgba(0,48,135,0.08)' : 'none',
-                  }}
-                />
-              </motion.div>
+              <label className="block text-[11px] font-bold uppercase tracking-[0.12em] mb-1.5" style={{ color: 'var(--ink-2)' }}>Användarnamn</label>
+              <TextInput value={username} onChange={(e) => setUsername(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} autoComplete="username" autoCapitalize="none" />
             </div>
-
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
-                Lösenord
-              </label>
-              <motion.div
-                animate={{ scale: focused === 'password' ? 1.01 : 1 }}
-                transition={{ duration: 0.15 }}
-                className="relative"
-              >
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onFocus={() => setFocused('password')}
-                  onBlur={() => setFocused(null)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-3 rounded-xl border-2 text-sm transition-all duration-200 outline-none bg-white pr-12"
-                  style={{
-                    borderColor: focused === 'password' ? '#003087' : '#e5e7eb',
-                    boxShadow: focused === 'password' ? '0 0 0 4px rgba(0,48,135,0.08)' : 'none',
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              <label className="block text-[11px] font-bold uppercase tracking-[0.12em] mb-1.5" style={{ color: 'var(--ink-2)' }}>Lösenord</label>
+              <div className="relative">
+                <TextInput type={show ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} autoComplete="current-password" className="pr-12" />
+                <button type="button" onClick={() => setShow(!show)} aria-label="Visa lösenord"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1" style={{ color: 'var(--ink-3)' }}>
+                  {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
-              </motion.div>
+              </div>
             </div>
-
-            <motion.button
-              onClick={handleLogin}
-              disabled={loading || !username || !password}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2 transition-opacity disabled:opacity-50"
-              style={{ background: '#003087', color: 'white' }}
-            >
+            <PrimaryButton onClick={handleLogin} disabled={loading || !username || !password} className="w-full py-3.5 mt-2">
               <AnimatePresence mode="wait">
                 {loading ? (
-                  <motion.div
-                    key="loading"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex items-center gap-2"
-                  >
-                    <motion.div
-                      className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
-                    />
-                    Loggar in...
-                  </motion.div>
+                  <motion.span key="l" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
+                    <motion.div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} /> Loggar in
+                  </motion.span>
                 ) : (
-                  <motion.div
-                    key="text"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex items-center gap-2"
-                  >
-                    Logga in
-                    <ArrowRight className="w-4 h-4" />
-                  </motion.div>
+                  <motion.span key="i" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2">
+                    Logga in <ArrowRight className="w-4 h-4" />
+                  </motion.span>
                 )}
               </AnimatePresence>
-            </motion.button>
-          </div>
-
-          <div className="mt-8 p-4 rounded-xl" style={{ background: 'rgba(0,48,135,0.04)', border: '1px solid rgba(0,48,135,0.1)' }}>
-            <p className="text-xs text-gray-500 font-medium mb-1">Demo credentials</p>
-            <p className="text-xs text-gray-400">Användarnamn: <span className="font-mono text-gray-600">admin</span></p>
-            <p className="text-xs text-gray-400">Lösenord: <span className="font-mono text-gray-600">postnord2024</span></p>
+            </PrimaryButton>
           </div>
         </motion.div>
       </div>

@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --color-background: var(--background);
@@ -49,72 +49,120 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* PostNord brand */
+  --pn-blue: #003087;
+  --pn-blue-strong: #002266;
+  --pn-blue-soft: rgba(0, 48, 135, 0.08);
+  --pn-blue-line: rgba(0, 48, 135, 0.16);
+  --pn-yellow: #FFCC00;
+  --pn-yellow-ink: #7a5c00;
+
+  /* Surfaces */
+  --surface-0: #f4f5f8;
+  --surface-1: #ffffff;
+  --surface-2: #eef1f7;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #94a3b8;
+  --line: rgba(15, 23, 42, 0.08);
+
+  /* Fatigue */
+  --f-rested: #16a34a;
+  --f-rested-bg: #dcfce7;
+  --f-normal: #d97706;
+  --f-normal-bg: #fef3c7;
+  --f-loaded: #dc2626;
+  --f-loaded-bg: #fee2e2;
+
+  /* shadcn mapping */
+  --background: var(--surface-0);
+  --foreground: var(--ink);
+  --card: var(--surface-1);
+  --card-foreground: var(--ink);
+  --popover: var(--surface-1);
+  --popover-foreground: var(--ink);
+  --primary: var(--pn-blue);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--pn-blue-soft);
+  --accent-foreground: var(--pn-blue);
+  --destructive: var(--f-loaded);
+  --border: var(--line);
+  --input: var(--pn-blue-line);
+  --ring: var(--pn-blue);
+  --chart-1: var(--pn-blue);
+  --chart-2: var(--pn-yellow);
+  --chart-3: var(--f-rested);
+  --chart-4: var(--f-normal);
+  --chart-5: var(--f-loaded);
+  --radius: 0.875rem;
+  --sidebar: var(--surface-1);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--pn-blue);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--surface-2);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--pn-blue);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --pn-blue: #4d7cff;
+  --pn-blue-strong: #003087;
+  --pn-blue-soft: rgba(77, 124, 255, 0.14);
+  --pn-blue-line: rgba(77, 124, 255, 0.28);
+  --pn-yellow: #FFCC00;
+  --pn-yellow-ink: #FFCC00;
+
+  --surface-0: #0b1020;
+  --surface-1: #121a2e;
+  --surface-2: #1a2440;
+  --ink: #eef2ff;
+  --ink-2: #a5b0cc;
+  --ink-3: #6b7694;
+  --line: rgba(238, 242, 255, 0.08);
+
+  --f-rested: #4ade80;
+  --f-rested-bg: rgba(74, 222, 128, 0.14);
+  --f-normal: #fbbf24;
+  --f-normal-bg: rgba(251, 191, 36, 0.14);
+  --f-loaded: #f87171;
+  --f-loaded-bg: rgba(248, 113, 113, 0.14);
+
+  --background: var(--surface-0);
+  --foreground: var(--ink);
+  --card: var(--surface-1);
+  --card-foreground: var(--ink);
+  --popover: var(--surface-1);
+  --popover-foreground: var(--ink);
+  --primary: var(--pn-blue);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--pn-blue-soft);
+  --accent-foreground: var(--pn-blue);
+  --destructive: var(--f-loaded);
+  --border: var(--line);
+  --input: var(--pn-blue-line);
+  --ring: var(--pn-blue);
+  --chart-1: var(--pn-blue);
+  --chart-2: var(--pn-yellow);
+  --chart-3: var(--f-rested);
+  --chart-4: var(--f-normal);
+  --chart-5: var(--f-loaded);
+  --sidebar: var(--surface-1);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--pn-blue);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--surface-2);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--pn-blue);
 }
 
 @layer base {
@@ -127,4 +175,13 @@
   html {
     @apply font-sans;
   }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) { color-scheme: dark; }
+}
+
+@layer base {
+  html { -webkit-tap-highlight-color: transparent; }
+  body { font-feature-settings: "tnum", "cv11"; }
 }

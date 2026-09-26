@@ -19,9 +19,9 @@ export default function BottomNav() {
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around px-2 pb-safe"
       style={{
-        background: 'rgba(255,255,255,0.95)',
+        background: 'color-mix(in srgb, var(--surface-1) 92%, transparent)',
         backdropFilter: 'blur(12px)',
-        borderTop: '1px solid rgba(0,0,0,0.06)',
+        borderTop: '1px solid var(--line)',
         paddingBottom: 'max(env(safe-area-inset-bottom), 12px)',
         paddingTop: '8px',
       }}
@@ -39,24 +39,24 @@ export default function BottomNav() {
                 <motion.div
                   layoutId="bottomNavIndicator"
                   className="absolute -top-2 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full"
-                  style={{ background: '#003087' }}
+                  style={{ background: 'var(--pn-blue)' }}
                   transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                 />
               )}
               <div
                 className="w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200"
                 style={{
-                  background: isActive ? 'rgba(0,48,135,0.08)' : 'transparent',
+                  background: isActive ? 'var(--pn-blue-soft)' : 'transparent',
                 }}
               >
                 <Icon
                   className="w-5 h-5 transition-all duration-200"
-                  style={{ color: isActive ? '#003087' : '#9ca3af' }}
+                  style={{ color: isActive ? 'var(--pn-blue)' : 'var(--ink-3)' }}
                 />
               </div>
               <span
                 className="text-xs font-medium transition-all duration-200"
-                style={{ color: isActive ? '#003087' : '#9ca3af', fontSize: '10px' }}
+                style={{ color: isActive ? 'var(--pn-blue)' : 'var(--ink-3)', fontSize: '10px' }}
               >
                 {item.label}
               </span>
