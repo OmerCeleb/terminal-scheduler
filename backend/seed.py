@@ -38,7 +38,8 @@ WORKERS = [
 print("bands")
 for name, pkgs in BANDS.items():
     b = call("POST", "/bands/", {"name": name})
-    call("PUT", f"/bands/{b['id']}/load", {"date": today.isoformat(), "packages": pkgs})
+    for d in [today] + days:
+        call("PUT", f"/bands/{b['id']}/load", {"date": d.isoformat(), "packages": round(pkgs * random.uniform(0.85, 1.15))})
 
 print("workers")
 for name, role, hist in WORKERS:
