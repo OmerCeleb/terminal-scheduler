@@ -1,4 +1,6 @@
+import datetime
 from io import BytesIO
+from zoneinfo import ZoneInfo
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
@@ -67,7 +69,8 @@ def _doc(buffer: BytesIO):
 def _header(el, st, eyebrow: str, title: str, schedule: ScheduleOut):
     el.append(Paragraph(eyebrow, st["eyebrow"]))
     el.append(Paragraph(title, st["title"]))
-    el.append(Paragraph(f"{schedule.date.strftime('%Y-%m-%d')}  ·  genererat {schedule.generated_at.strftime('%H:%M')}", st["sub"]))
+    local = schedule.generated_at.replace(tzinfo=datetime.timezone.utc).astimezone(ZoneInfo("Europe/Stockholm"))
+    el.append(Paragraph(f"{schedule.date.strftime('%Y-%m-%d')}  ·  genererat {local.strftime('%H:%M')}", st["sub"]))
     el.append(Spacer(1, 6))
     el.append(HRFlowable(width="100%", thickness=2, color=PN_YELLOW, spaceAfter=12))
 
@@ -121,13 +124,52 @@ def _fatigue_table(rows, style, col_widths):
     return t
 
 
+def _cell(text, size=9, bold=False, color=INK, align=TA_LEFT):
+    return Paragraph(text, ParagraphStyle("c", fontName="Helvetica-Bold" if bold else "Helvetica",
+                                          fontSize=size, leading=size + 2, textColor=color, alignment=align))
+
+
+def _head(text, color=colors.white, align=TA_LEFT):
+    return _cell(text, size=8, bold=True, color=color, align=align)
+
+
+def _day_cell(entry):
+    if not entry:
+        return _cell("–", color=INK_3, align=TA_CENTER)
+    _, pkgs, heavy = entry
+    sub = f'<br/><font size="7" color="#94a3b8">{heavy} tunga</font>' if heavy else ""
+    return _cell(f"<b>{_num(pkgs)}</b>{sub}", align=TA_CENTER)
+
+
+def _fatigue_cell(score):
+    fg, _, label = _fatigue(score)
+    return _cell(f"{label}<br/><font size='11'>{round(score)}</font>", size=8, bold=True, color=fg, align=TA_CENTER)
+
+
+BASE_TABLE = [
+    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ("TOPPADDING", (0, 0), (-1, -1), 5),
+    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+    ("LINEBELOW", (0, 1), (-1, -1), 0.5, LINE),
+]
+
+
 def generate_shift_report(schedule: ScheduleOut, recent_loads: dict) -> bytes:
-    """Supervisor report: assignment plus the reasoning. recent_loads: worker_id -> [(date, packages, weight_kg)]."""
+    """Supervisor report: assignment plus the reasoning. recent_loads: worker_id -> [(date, packages, heavy)]."""
     buffer = BytesIO()
     doc = _doc(buffer)
     st = _styles()
     el = []
     _header(el, st, "SKIFTRAPPORT", "Fördelning och belastning", schedule)
+
+    days = [schedule.date - datetime.timedelta(days=i) for i in (1, 2, 3)]
+    day_heads = ["Igår", days[1].strftime("%d/%m"), days[2].strftime("%d/%m")]
+
+    def history(wid):
+        by_date = {d: (d, p, h) for d, p, h in recent_loads.get(wid, [])}
+        return [_day_cell(by_date.get(d)) for d in days]
 
     total = sum(a.band_packages for a in schedule.assignments) + sum(b.packages for b in schedule.empty_bands)
     summary = Table(
@@ -159,51 +201,48 @@ def generate_shift_report(schedule: ScheduleOut, recent_loads: dict) -> bytes:
         for w in schedule.unassigned:
             el.append(Paragraph(f"• {w.name} har inget band", st["sub"]))
 
-    def hist_txt(wid):
-        h = recent_loads.get(wid, [])
-        return "  ".join(f"{_num(p)}" + (f" ({hv} tunga)" if hv else "") for _, p, hv in h) if h else "–"
-
+    # Assignments: Band | Paket | Medarbetare | Belastning | 3 day columns = 174 mm
     el.append(Paragraph("Fördelning", st["h2"]))
-    rows = [["Band", "Paket", "Medarbetare", "Belastning", "Senaste 3 dagar (paket, tunga >10 kg)"]]
-    style = [
+    rows = [[_head("Band"), _head("Paket", align=TA_CENTER), _head("Medarbetare"), _head("Belastning", align=TA_CENTER)]
+            + [_head(h, align=TA_CENTER) for h in day_heads]]
+    style = list(BASE_TABLE) + [
         ("BACKGROUND", (0, 0), (-1, 0), PN_BLUE),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("ALIGN", (3, 0), (4, -1), "CENTER"),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LINEBELOW", (0, 1), (-1, -1), 0.5, LINE),
+        ("BACKGROUND", (4, 1), (-1, -1), SURFACE),
     ]
     for i, a in enumerate(sorted(schedule.assignments, key=lambda x: x.band_packages, reverse=True), start=1):
-        fg, bg, label = _fatigue(a.fatigue_score)
-        rows.append([a.band_name, _num(a.band_packages), a.worker_name, f"{label} · {round(a.fatigue_score)}", hist_txt(a.worker_id)])
-        style += [("BACKGROUND", (3, i), (3, i), bg), ("TEXTCOLOR", (3, i), (3, i), fg), ("FONTNAME", (3, i), (3, i), "Helvetica-Bold")]
-    el.append(_fatigue_table(rows, style, [22 * mm, 20 * mm, 52 * mm, 34 * mm, 46 * mm]))
+        _, bg, _ = _fatigue(a.fatigue_score)
+        rows.append([
+            _cell(a.band_name, size=11, bold=True),
+            _cell(_num(a.band_packages), align=TA_CENTER),
+            _cell(a.worker_name, bold=True),
+            _fatigue_cell(a.fatigue_score),
+            *history(a.worker_id),
+        ])
+        style.append(("BACKGROUND", (3, i), (3, i), bg))
+    t = Table(rows, colWidths=[16 * mm, 20 * mm, 46 * mm, 26 * mm, 22 * mm, 22 * mm, 22 * mm], repeatRows=1)
+    t.setStyle(TableStyle(style))
+    el.append(t)
 
+    # Stöd: Medarbetare | Belastning | 3 day columns = 174 mm
     if schedule.stod:
         el.append(Paragraph("Stöd", st["h2"]))
-        srows = [["Medarbetare", "Belastning", "Senaste 3 dagar (paket, tunga >10 kg)"]]
-        sstyle = [
+        srows = [[_head("Medarbetare", color=INK_2), _head("Belastning", color=INK_2, align=TA_CENTER)]
+                 + [_head(h, color=INK_2, align=TA_CENTER) for h in day_heads]]
+        sstyle = list(BASE_TABLE) + [
             ("BACKGROUND", (0, 0), (-1, 0), SURFACE),
-            ("TEXTCOLOR", (0, 0), (-1, 0), INK_2),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("ALIGN", (1, 0), (2, -1), "CENTER"),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("LINEBELOW", (0, 1), (-1, -1), 0.5, LINE),
+            ("BACKGROUND", (2, 1), (-1, -1), SURFACE),
         ]
         for i, w in enumerate(schedule.stod, start=1):
-            fg, bg, label = _fatigue(w.fatigue_score)
-            srows.append([w.name, f"{label} · {round(w.fatigue_score)}", hist_txt(w.id)])
-            sstyle += [("BACKGROUND", (1, i), (1, i), bg), ("TEXTCOLOR", (1, i), (1, i), fg), ("FONTNAME", (1, i), (1, i), "Helvetica-Bold")]
-        el.append(_fatigue_table(srows, sstyle, [74 * mm, 40 * mm, 60 * mm]))
+            _, bg, _ = _fatigue(w.fatigue_score)
+            srows.append([_cell(w.name, bold=True), _fatigue_cell(w.fatigue_score), *history(w.id)])
+            sstyle.append(("BACKGROUND", (1, i), (1, i), bg))
+        stt = Table(srows, colWidths=[82 * mm, 26 * mm, 22 * mm, 22 * mm, 22 * mm])
+        stt.setStyle(TableStyle(sstyle))
+        el.append(stt)
 
     el.append(Spacer(1, 10))
-    el.append(Paragraph("Belastning 50 = lagets snitt. Utvilad under 50, Belastad över 70. Tyngsta banden tilldelas de mest utvilade.", st["note"]))
+    el.append(Paragraph("Belastning: 50 = lagets snitt, under 50 utvilad, över 70 belastad. Tunga = paket över 10 kg, räknas tre gånger. "
+                        "Tyngsta banden tilldelas de mest utvilade.", st["note"]))
 
     _footer(el, st)
     doc.build(el)

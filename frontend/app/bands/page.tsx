@@ -86,7 +86,6 @@ export default function BandsPage() {
   }
 
   const total = Object.values(saved).reduce((s, v) => s + v, 0)
-  const max = Math.max(...Object.values(saved), 1)
   const unsaved = bands.filter((b) => (drafts[b.id] ?? '') !== String(saved[b.id] ?? '')).length
 
   return (
@@ -109,36 +108,88 @@ export default function BandsPage() {
       </AnimatePresence>
 
       {/* Floor view */}
-      {bands.length > 0 && (
-        <Card initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
-          <div className="px-5 pt-4 pb-2 flex items-baseline justify-between">
-            <div>
-              <p className="font-bold text-sm" style={{ color: 'var(--ink)' }}>Volymöversikt</p>
-              <p className="text-[11px]" style={{ color: 'var(--ink-3)' }}>{bands.length} band · {total.toLocaleString('sv-SE')} paket</p>
+      {bands.length > 0 && (() => {
+        const values = bands.map((b) => saved[b.id] ?? 0)
+        const filled = values.filter((v) => v > 0)
+        const avg = filled.length ? filled.reduce((a, b) => a + b, 0) / filled.length : 0
+        const top = Math.max(...values, 1) * 1.12
+        const peakId = bands[values.indexOf(Math.max(...values))]?.id
+        const toneFor = (v: number) =>
+          v > avg * 1.25 ? 'var(--f-loaded)' : v > avg ? 'var(--f-normal)' : 'var(--pn-blue)'
+        return (
+          <Card initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
+            <div className="px-5 pt-4 flex items-start justify-between">
+              <div>
+                <p className="font-bold text-sm" style={{ color: 'var(--ink)' }}>Volymöversikt</p>
+                <p className="text-[11px] mt-0.5 tabular-nums" style={{ color: 'var(--ink-3)' }}>
+                  {bands.length} band · {total.toLocaleString('sv-SE')} paket · snitt {Math.round(avg).toLocaleString('sv-SE')}
+                </p>
+              </div>
+              {unsaved > 0 && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--f-normal-bg)', color: 'var(--f-normal)' }}>{unsaved} osparat</span>}
             </div>
-            {unsaved > 0 && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--f-normal-bg)', color: 'var(--f-normal)' }}>{unsaved} osparat</span>}
-          </div>
-          <div className="overflow-x-auto px-5 pb-4">
-            <div className="flex items-end gap-2 h-36 min-w-max">
-              {bands.map((b, i) => {
-                const v = saved[b.id] ?? 0
-                const pct = v / max
-                const color = pct > 0.75 ? 'var(--f-loaded)' : pct > 0.45 ? 'var(--f-normal)' : 'var(--pn-blue)'
-                return (
-                  <div key={b.id} className="flex flex-col items-center gap-1.5 w-12">
-                    <span className="text-[10px] font-bold tabular-nums" style={{ color: v ? 'var(--ink-2)' : 'var(--ink-3)' }}>{v ? v.toLocaleString('sv-SE') : '–'}</span>
-                    <div className="w-full flex-1 flex items-end rounded-lg overflow-hidden" style={{ background: 'var(--surface-2)' }}>
-                      <motion.div className="w-full rounded-lg" style={{ background: color }}
-                        initial={{ height: 0 }} animate={{ height: `${Math.max(pct * 100, v ? 6 : 0)}%` }} transition={{ duration: 0.5, delay: i * 0.04, ease: 'easeOut' }} />
-                    </div>
-                    <span className="text-[11px] font-bold" style={{ color: 'var(--ink)' }}>{b.name}</span>
+
+            <div className="px-4 pt-5 pb-4">
+              <div className="relative h-44">
+                {[0.25, 0.5, 0.75, 1].map((g) => (
+                  <div key={g} className="absolute left-0 right-0 h-px" style={{ bottom: `${g * 100}%`, background: 'var(--line)' }} />
+                ))}
+                {avg > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}
+                    className="absolute left-0 right-0 z-10 pointer-events-none"
+                    style={{ bottom: `${(avg / top) * 100}%`, borderTop: '1.5px dashed var(--ink-3)' }}
+                  >
+                    <span className="absolute right-0 -top-4 text-[9px] font-bold uppercase tracking-wider px-1 rounded"
+                      style={{ color: 'var(--ink-3)', background: 'var(--surface-1)' }}>snitt</span>
+                  </motion.div>
+                )}
+                <div className="absolute inset-0 flex items-end gap-1.5">
+                  {bands.map((b, i) => {
+                    const v = saved[b.id] ?? 0
+                    const h = (v / top) * 100
+                    const c = toneFor(v)
+                    return (
+                      <div key={b.id} className="flex-1 h-full flex flex-col justify-end items-center min-w-0">
+                        {v > 0 && (
+                          <motion.span
+                            initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 + i * 0.05 }}
+                            className="text-[9px] font-bold tabular-nums mb-1 whitespace-nowrap" style={{ color: 'var(--ink-2)' }}
+                          >
+                            {v >= 1000 ? `${(v / 1000).toFixed(1).replace('.', ',')}k` : v}
+                          </motion.span>
+                        )}
+                        <motion.div
+                          className="w-full rounded-t-lg relative overflow-hidden"
+                          style={{ background: `linear-gradient(180deg, ${c} 0%, color-mix(in srgb, ${c} 55%, transparent) 100%)` }}
+                          initial={{ height: 0 }} animate={{ height: `${h}%` }}
+                          transition={{ duration: 0.7, delay: 0.1 + i * 0.05, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                          {b.id === peakId && v > 0 && (
+                            <span className="absolute top-1 left-1/2 -translate-x-1/2 text-[8px] font-extrabold text-white uppercase">Max</span>
+                          )}
+                        </motion.div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="flex gap-1.5 mt-2">
+                {bands.map((b) => (
+                  <div key={b.id} className="flex-1 min-w-0 text-center">
+                    <span className="inline-block text-[10px] font-extrabold tabular-nums px-1.5 py-0.5 rounded-md"
+                      style={{ background: 'var(--pn-blue-soft)', color: 'var(--pn-blue)' }}>{b.name}</span>
                   </div>
-                )
-              })}
+                ))}
+              </div>
+              <div className="flex items-center gap-3 mt-3 text-[10px] font-semibold" style={{ color: 'var(--ink-3)' }}>
+                {[['var(--pn-blue)', 'Under snitt'], ['var(--f-normal)', 'Över snitt'], ['var(--f-loaded)', '+25 % över']].map(([c, l]) => (
+                  <span key={l} className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{ background: c }} />{l}</span>
+                ))}
+              </div>
             </div>
-          </div>
-        </Card>
-      )}
+          </Card>
+        )
+      })()}
 
       {/* Entry list */}
       {loading ? (
